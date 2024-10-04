@@ -1,0 +1,31 @@
+[package]
+name = "graphics-toolbox"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.3.0"
+
+[dependencies]
+env_logger = "0.11.5"
+log = "0.4.22"
+winit = "0.30.5"
+# keep wgpu versions in sync here and below
+wgpu = "22.1.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "22.1.0", features = ["webgl"]}
+# ^keep wgpu vesions in sync here and above
+console_error_panic_hook = "0.1.6"
+console_log = "1.0"
+wasm-bindgen = "0.2.93"
+wasm-bindgen-futures = "0.4.43"
+web-sys = { version = "0.3.70", features = [
+    "Document",
+    "Window",
+    "Element",
+]}
