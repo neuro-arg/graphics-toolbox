@@ -296,17 +296,17 @@ impl ApplicationHandler<Event> for App {
                 self.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                let frame = self
-                    .surface
-                    .get_current_texture()
-                    .expect("Failed to acquire next swap chain texture");
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
-                let mut encoder = self
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
                 if let (Some(pipeline), Some(group)) = (&self.render_pipeline, &self.bind_group) {
+                    let frame = self
+                        .surface
+                        .get_current_texture()
+                        .expect("Failed to acquire next swap chain texture");
+                    let view = frame
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default());
+                    let mut encoder = self
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: None,
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -324,10 +324,11 @@ impl ApplicationHandler<Event> for App {
                     rpass.set_pipeline(pipeline);
                     rpass.set_bind_group(0, group, &[]);
                     rpass.draw(0..6, 0..1);
+                    drop(rpass);
+                    drop(view);
+                    self.queue.submit(Some(encoder.finish()));
+                    frame.present();
                 }
-
-                self.queue.submit(Some(encoder.finish()));
-                frame.present();
             }
             WindowEvent::CloseRequested => event_loop.exit(),
             _ => {}

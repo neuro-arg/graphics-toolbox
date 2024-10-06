@@ -27,7 +27,7 @@ pkgs.mkShell rec {
     libxkbcommon
     # libGL
     vulkan-loader
-    yarn
+    nodePackages.npm
     nodejs
   ];
 

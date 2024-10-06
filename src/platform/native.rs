@@ -7,8 +7,6 @@ use std::{
 
 use notify::{RecursiveMode, Watcher};
 
-use super::SendEvent;
-
 // very bad impl for testing and stuff
 #[derive(Debug)]
 pub struct Platform(
@@ -33,7 +31,7 @@ impl super::PlatformTrait for Platform {
     fn unwatch_file(&mut self, name: &str) {
         self.1.send((name.to_owned(), false)).unwrap()
     }
-    fn new(send_event: impl SendEvent) -> Self {
+    fn new(send_event: crate::winit_proxy::SendEvent) -> Self {
         let (watch_tx, watch_rx) = mpsc::sync_channel(16);
         let mut ret = Self(Arc::default(), watch_tx);
         let files = ret.list_files();
@@ -64,7 +62,8 @@ impl super::PlatformTrait for Platform {
                 for path in &event.paths {
                     if let Some(path) = path.file_name().and_then(|name| name.to_str()) {
                         if let Ok(contents) = std::fs::read(path) {
-                            send_event1.send_event(crate::Event::FileContents(path.to_owned(), contents));
+                            send_event1
+                                .send_event(crate::Event::FileContents(path.to_owned(), contents));
                         }
                     }
                 }
@@ -89,9 +88,7 @@ impl super::PlatformTrait for Platform {
         });
         ret
     }
-    fn error_reporter(
-        &mut self,
-    ) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Error>) {
+    fn error_reporter(&mut self) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Error>) {
         |error| log::error!("{error}")
     }
 }

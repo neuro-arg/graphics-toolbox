@@ -23,20 +23,21 @@ pub enum ProxyEvent {
     Event(Event),
 }
 
+#[derive(Clone, Debug)]
+pub struct SendEvent(EventLoopProxy<ProxyEvent>);
+impl SendEvent {
+    pub fn send_event(&self, event: crate::Event) {
+        self.0
+            .send_event(ProxyEvent::Event(event))
+            .map_err(|_| "event loop closed")
+            .unwrap();
+    }
+}
+
 impl ApplicationHandler<ProxyEvent> for WinitProxy {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         match self {
             Self::Uninit(_) => {
-                #[derive(Clone)]
-                struct SendEvent(EventLoopProxy<ProxyEvent>);
-                impl crate::platform::SendEvent for SendEvent {
-                    fn send_event(&self, event: crate::Event) {
-                        self.0
-                            .send_event(ProxyEvent::Event(event))
-                            .map_err(|_| "event loop closed")
-                            .unwrap();
-                    }
-                }
                 let mut tmp = Self::Waiting {
                     window_events: Vec::new(),
                     user_events: Vec::new(),
