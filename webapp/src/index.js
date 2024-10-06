@@ -1,8 +1,8 @@
 import init from "web";
 
-export const runApp = () => {
+export const runApp = async () => {
   try {
-    init();
+    await init();
     console.log("WASM Loaded");
   } catch (e) {
     console.error(e);

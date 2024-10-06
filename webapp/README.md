@@ -1,7 +1,7 @@
 ## How to install
 
 ```sh
-npm install
+npm isntall
 ```
 
 ## How to run in debug mode

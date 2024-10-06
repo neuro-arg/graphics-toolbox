@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "build": "webpack",
-    "start": "webpack && webpack-dev-server --open",
+    "start": "webpack && webpack-dev-server --open --no-client-overlay-runtime-errors",
     "clean": "rm -rf pkg dist",
     "test": "cd .. && cargo test && cd webapp && wasm-pack test --headless"
   },
