@@ -6,23 +6,25 @@ const dist = path.resolve(__dirname, "dist");
 
 module.exports = {
   mode: "production",
-  entry: {
-    index: "./src/index.js"
-  },
+  entry: "./src/index.js",
   output: {
     path: dist,
     filename: "[name].js"
   },
-  devServer: {
-    contentBase: dist,
-  },
   plugins: [
-    new CopyPlugin([
-      path.resolve(__dirname, "static")
-    ]),
+    new CopyPlugin({ patterns: ['./static/index.html'] }),
 
     new WasmPackPlugin({
       crateDirectory: path.resolve(__dirname, ".."),
+      outName: 'graphics_toolbox',
     }),
-  ]
+  ],
+  experiments: {
+    asyncWebAssembly: true
+  },
+  performance: {
+    hints: false,
+    maxEntrypointSize: 512000,
+    maxAssetSize: 512000
+  }
 };
