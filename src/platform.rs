@@ -5,6 +5,11 @@ pub mod wasm;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub trait SendEvent: 'static + Send + Clone {
+    fn send_event(&self, event: crate::Event);
+}
+#[cfg(target_arch = "wasm32")]
 pub trait SendEvent: 'static + Clone {
     fn send_event(&self, event: crate::Event);
 }

@@ -91,7 +91,7 @@ impl super::PlatformTrait for Platform {
     }
     fn error_reporter(
         &mut self,
-    ) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Send + Sync + Error>) {
+    ) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Error>) {
         |error| log::error!("{error}")
     }
 }
