@@ -1,8 +1,8 @@
-import { start } from "web";
+import init from "web";
 
 export const runApp = () => {
   try {
-    start();
+    init();
     console.log("WASM Loaded");
   } catch (e) {
     console.error(e);
