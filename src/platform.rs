@@ -5,12 +5,11 @@ pub mod wasm;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 
-pub trait SendEvent: 'static + Send + Sync + Clone {
+pub trait SendEvent: 'static + Clone {
     fn send_event(&self, event: crate::Event);
 }
 
 pub trait PlatformTrait: Debug {
-    type FileData: AsRef<[u8]>;
     fn new(send_event: impl SendEvent) -> Self;
     fn watch_file(&mut self, name: &str);
     #[allow(dead_code)]
@@ -18,7 +17,7 @@ pub trait PlatformTrait: Debug {
     fn list_files(&mut self) -> Vec<String>;
     fn error_reporter(
         &mut self,
-    ) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Send + Sync + Error>);
+    ) -> impl 'static + Send + Sync + Fn(Box<dyn 'static + Error>);
 }
 
 #[cfg(target_arch = "wasm32")]

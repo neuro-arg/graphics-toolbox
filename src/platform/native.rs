@@ -17,7 +17,6 @@ pub struct Platform(
 );
 
 impl super::PlatformTrait for Platform {
-    type FileData = Vec<u8>;
     fn list_files(&mut self) -> Vec<String> {
         std::fs::read_dir(".")
             .into_iter()
