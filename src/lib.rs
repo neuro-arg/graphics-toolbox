@@ -1,37 +1,44 @@
+use core::str;
+use image::GenericImageView;
 use std::{borrow::Cow, future::Future};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::{Device, Queue, RenderPipeline, Surface, SurfaceConfiguration};
+use wgpu::{
+    Adapter, BindGroup, BindGroupLayout, Device, Queue, RenderPipeline, Surface,
+    SurfaceConfiguration,
+};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
-    event_loop::{EventLoop, EventLoopProxy},
-    window::{Window, WindowAttributes, WindowId},
+    event_loop::EventLoop,
+    window::{Window, WindowAttributes},
 };
+use winit_proxy::WinitProxy;
+
+use platform::{Platform, PlatformTrait};
+
+mod platform;
+mod winit_proxy;
 
 #[derive(Debug)]
-struct InitApp {
+struct App {
     config: SurfaceConfiguration,
     surface: Surface<'static>,
     device: Device,
+    adapter: Adapter,
     window: &'static Window,
-    render_pipeline: RenderPipeline,
+    render_pipeline: Option<RenderPipeline>,
     queue: Queue,
+    layout: BindGroupLayout,
+    // platform-specific code
+    _platform: Platform,
+    // stuff to load/reload later
+    bind_group: Option<BindGroup>,
 }
 
-#[derive(Debug)]
-enum App {
-    Uninit(EventLoopProxy<InitApp>),
-    Waiting {
-        events: Vec<(WindowId, WindowEvent)>,
-    },
-    Init(InitApp),
-}
-
-impl InitApp {
+impl App {
     #[cfg(target_arch = "wasm32")]
     fn window_attrs() -> WindowAttributes {
-        use wasm_bindgen::JsCast;
         use winit::platform::web::WindowAttributesExtWebSys;
         let canvas = web_sys::window()
             .unwrap()
@@ -52,61 +59,27 @@ impl InitApp {
     fn base_window_attrs() -> WindowAttributes {
         winit::window::WindowAttributes::default()
     }
-    fn new(
-        event_loop: &winit::event_loop::ActiveEventLoop,
-    ) -> impl 'static + Future<Output = Self> {
-        let window = event_loop.create_window(Self::window_attrs()).unwrap();
-        let mut size = window.inner_size();
-        size.width = size.width.max(640);
-        size.height = size.height.max(480);
-        let instance = wgpu::Instance::default();
-
-        async move {
-            // XXX: I hate this
-            let window = Box::leak(Box::new(window));
-            let surface = instance.create_surface(&*window).unwrap();
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::default(),
-                    force_fallback_adapter: false,
-                    // Request an adapter which can render to our surface
-                    compatible_surface: Some(&surface),
-                })
-                .await
-                .expect("Failed to find an appropriate adapter");
-
-            // Create the logical device and command queue
-            let (device, queue) = adapter
-                .request_device(
-                    &wgpu::DeviceDescriptor {
-                        label: None,
-                        required_features: wgpu::Features::empty(),
-                        // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                        required_limits: wgpu::Limits::downlevel_webgl2_defaults()
-                            .using_resolution(adapter.limits()),
-                        memory_hints: wgpu::MemoryHints::MemoryUsage,
-                    },
-                    None,
-                )
-                .await
-                .expect("Failed to create device");
-
-            // Load the shaders from disk
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+    fn load_shader(&mut self, shader: &str) {
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: None,
-                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("../shader.wgsl"))),
+                source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(shader)),
             });
-
-            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let pipeline_layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&self.layout],
                 push_constant_ranges: &[],
             });
 
-            let swapchain_capabilities = surface.get_capabilities(&adapter);
-            let swapchain_format = swapchain_capabilities.formats[0];
+        let swapchain_capabilities = self.surface.get_capabilities(&self.adapter);
+        let swapchain_format = swapchain_capabilities.formats[0];
 
-            let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let render_pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: None,
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -127,6 +100,157 @@ impl InitApp {
                 multiview: None,
                 cache: None,
             });
+        self.render_pipeline = Some(render_pipeline);
+    }
+    fn load_image(&mut self, img: image::DynamicImage) {
+        let dimensions = img.dimensions();
+        let rgba = img.into_rgba8();
+
+        let size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            depth_or_array_layers: 1,
+        };
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                aspect: wgpu::TextureAspect::All,
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            size,
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler1 = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let sampler2 = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        self.bind_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler1),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler2),
+                },
+            ],
+            label: None,
+        }));
+    }
+    fn new(
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        mut platform: Platform,
+    ) -> impl 'static + Future<Output = Self> {
+        let window = event_loop.create_window(Self::window_attrs()).unwrap();
+        let mut size = window.inner_size();
+        size.width = size.width.max(640);
+        size.height = size.height.max(480);
+        let instance = wgpu::Instance::default();
+        platform.watch_file("nuero.png");
+        platform.watch_file("shader.wgsl");
+
+        async move {
+            // XXX: I hate this, can't this be an Rc?
+            let window = Box::leak(Box::new(window));
+            let surface = instance.create_surface(&*window).unwrap();
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::default(),
+                    force_fallback_adapter: false,
+                    // Request an adapter which can render to our surface
+                    compatible_surface: Some(&surface),
+                })
+                .await
+                .expect("Failed to find an appropriate adapter");
+
+            // Create the logical device and command queue
+            let (device, queue) = adapter
+                .request_device(
+                    &wgpu::DeviceDescriptor {
+                        label: None,
+                        required_features: wgpu::Features::default(),
+                        // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
+                        required_limits: wgpu::Limits::downlevel_webgl2_defaults()
+                            .using_resolution(adapter.limits()),
+                        memory_hints: wgpu::MemoryHints::MemoryUsage,
+                    },
+                    None,
+                )
+                .await
+                .expect("Failed to create device");
+
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: None,
+            });
+            let reporter = platform.error_reporter();
+            device.on_uncaptured_error(Box::new(move |error: wgpu::Error| {
+                reporter(Box::new(error))
+            }));
 
             let config = surface
                 .get_default_config(&adapter, size.width, size.height)
@@ -135,16 +259,26 @@ impl InitApp {
             Self {
                 config,
                 device,
+                adapter,
                 queue,
-                render_pipeline,
+                render_pipeline: None,
                 surface,
                 window,
+                _platform: platform,
+                bind_group: None,
+                layout,
             }
         }
     }
 }
 
-impl ApplicationHandler for InitApp {
+#[derive(Debug)]
+enum Event {
+    // Redraw,
+    FileContents(String, Vec<u8>),
+}
+
+impl ApplicationHandler<Event> for App {
     fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {}
     fn window_event(
         &mut self,
@@ -172,7 +306,7 @@ impl ApplicationHandler for InitApp {
                 let mut encoder = self
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-                {
+                if let (Some(pipeline), Some(group)) = (&self.render_pipeline, &self.bind_group) {
                     let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: None,
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -187,8 +321,9 @@ impl ApplicationHandler for InitApp {
                         timestamp_writes: None,
                         occlusion_query_set: None,
                     });
-                    rpass.set_pipeline(&self.render_pipeline);
-                    rpass.draw(0..3, 0..1);
+                    rpass.set_pipeline(pipeline);
+                    rpass.set_bind_group(0, group, &[]);
+                    rpass.draw(0..6, 0..1);
                 }
 
                 self.queue.submit(Some(encoder.finish()));
@@ -198,106 +333,36 @@ impl ApplicationHandler for InitApp {
             _ => {}
         };
     }
-}
-impl ApplicationHandler<InitApp> for App {
-    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        match self {
-            Self::Uninit(_) => {
-                let mut tmp = Self::Waiting { events: Vec::new() };
-                std::mem::swap(&mut tmp, self);
-                let Self::Uninit(proxy) = tmp else {
-                    unreachable!()
-                };
-                let app = InitApp::new(event_loop);
-                spawn_future(async move {
-                    let app = app.await;
-                    proxy
-                        .send_event(app)
-                        .map_err(|_| "event loop closed")
-                        .unwrap();
-                });
-            }
-            Self::Waiting { .. } => (),
-            Self::Init(x) => x.resumed(event_loop),
-        }
-    }
-    fn window_event(
-        &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        window_id: WindowId,
-        event: WindowEvent,
-    ) {
-        match self {
-            Self::Waiting { events } => events.push((window_id, event)),
-            Self::Init(this) => {
-                this.window_event(event_loop, window_id, event);
-            }
-            Self::Uninit(..) => {}
-        }
-    }
-    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.exiting(event_loop)
-    }
-    fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.suspended(event_loop)
-    }
-    fn new_events(
-        &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        cause: winit::event::StartCause,
-    ) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.new_events(event_loop, cause)
-    }
-    fn device_event(
-        &mut self,
-        event_loop: &winit::event_loop::ActiveEventLoop,
-        device_id: winit::event::DeviceId,
-        event: winit::event::DeviceEvent,
-    ) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.device_event(event_loop, device_id, event)
-    }
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.about_to_wait(event_loop)
-    }
-    fn memory_warning(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let Self::Init(this) = self else {
-            return;
-        };
-        this.memory_warning(event_loop)
-    }
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, app: InitApp) {
-        let mut this = Self::Init(app);
-        std::mem::swap(&mut this, self);
-        let Self::Waiting { events } = this else {
-            return;
-        };
-        for (window_id, event) in events {
-            self.window_event(event_loop, window_id, event)
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
+        match event {
+            // Event::Redraw => self.window.request_redraw(),
+            Event::FileContents(name, contents) => match name.as_str() {
+                "nuero.png" => {
+                    if let Ok(img) = image::load_from_memory(&contents) {
+                        self.load_image(img);
+                        self.window.request_redraw();
+                    }
+                }
+                "shader.wgsl" => {
+                    if let Ok(code) = std::str::from_utf8(&contents) {
+                        self.load_shader(code);
+                        self.window.request_redraw();
+                    }
+                }
+                _ => {}
+            },
         }
     }
 }
 
-async fn run(event_loop: EventLoop<InitApp>) {
+async fn run() {
+    let event_loop = EventLoop::with_user_event().build().unwrap();
     let proxy = event_loop.create_proxy();
-    event_loop.run_app(&mut App::Uninit(proxy)).unwrap();
+    event_loop.run_app(&mut WinitProxy::Uninit(proxy)).unwrap();
 }
 
-fn spawn_future<F: 'static + Future<Output = ()>>(f: F) {
+/// May or may not block
+fn run_future<F: 'static + Future<Output = ()>>(f: F) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         pollster::block_on(f);
@@ -320,6 +385,5 @@ pub fn start() {
         console_log::init().expect("could not initialize logger");
     }
 
-    let event_loop = EventLoop::with_user_event().build().unwrap();
-    spawn_future(run(event_loop));
+    run_future(run());
 }

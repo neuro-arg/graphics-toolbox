@@ -25,7 +25,10 @@ pkgs.mkShell rec {
     # xorg.libXi
     wayland
     libxkbcommon
-    libGL
+    # libGL
+    vulkan-loader
+    yarn
+    nodejs
   ];
 
   LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
