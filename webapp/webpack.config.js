@@ -17,6 +17,7 @@ module.exports = {
     new WasmPackPlugin({
       crateDirectory: path.resolve(__dirname, ".."),
       outName: 'graphics_toolbox',
+      extraArgs: '--target web',
     }),
   ],
   experiments: {
