@@ -2,6 +2,7 @@
   "author": "chayleaf",
   "name": "graphics-toolbox",
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
     "build": "webpack",
     "start": "webpack && webpack-dev-server --open --no-client-overlay-runtime-errors",

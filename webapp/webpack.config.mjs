@@ -1,13 +1,13 @@
-const path = require("path");
-const CopyPlugin = require("copy-webpack-plugin");
-const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
+import path from "node:path";
+import CopyPlugin from "copy-webpack-plugin";
+import WasmPackPlugin from "@wasm-tool/wasm-pack-plugin";
 
-const dist = path.resolve(__dirname, "dist");
+const dist = path.resolve(import.meta.dirname, "dist");
 
-module.exports = {
+export default {
   mode: "production",
   devtool: "inline-source-map",
-  entry: "./src/index.js",
+  entry: "./src/index.mjs",
   output: {
     path: dist,
     filename: "[name].js"
@@ -16,7 +16,7 @@ module.exports = {
     new CopyPlugin({ patterns: ['./static/index.html'] }),
 
     new WasmPackPlugin({
-      crateDirectory: path.resolve(__dirname, ".."),
+      crateDirectory: path.resolve(import.meta.dirname, ".."),
       outName: 'graphics_toolbox',
       extraArgs: '--target web',
     }),
