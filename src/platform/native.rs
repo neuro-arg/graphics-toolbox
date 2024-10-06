@@ -1,8 +1,5 @@
 use std::{
-    collections::HashSet,
-    error::Error,
-    path::Path,
-    sync::{mpsc, Arc, Mutex},
+    collections::HashSet, error::Error, future::Future, path::Path, sync::{mpsc, Arc, Mutex}
 };
 
 use notify::{RecursiveMode, Watcher};
@@ -15,6 +12,12 @@ pub struct Platform(
 );
 
 impl super::PlatformTrait for Platform {
+    fn init() {
+        env_logger::init();
+    }
+    fn run_future<F: 'static + Future<Output = ()>>(f: F) {
+        pollster::block_on(f);
+    }
     fn list_files(&mut self) -> Vec<String> {
         std::fs::read_dir(".")
             .into_iter()

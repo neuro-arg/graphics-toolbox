@@ -16,5 +16,10 @@
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^4.15.1"
+  },
+  "dependencies": {
+    "@replit/codemirror-emacs": "^6.1.0",
+    "@replit/codemirror-vim": "^6.2.1",
+    "codemirror": "^6.0.1"
   }
 }

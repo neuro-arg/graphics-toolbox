@@ -725,6 +725,7 @@ dependencies = [
  "console_log",
  "env_logger",
  "image",
+ "js-sys",
  "log",
  "notify",
  "pollster",

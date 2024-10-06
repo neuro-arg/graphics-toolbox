@@ -5,7 +5,10 @@ use winit::{
     window::WindowId,
 };
 
-use crate::{platform::PlatformTrait, run_future, App, Event};
+use crate::{
+    platform::{Platform, PlatformTrait},
+    App, Event,
+};
 
 #[derive(Debug)]
 pub enum WinitProxy {
@@ -47,7 +50,7 @@ impl ApplicationHandler<ProxyEvent> for WinitProxy {
                     unreachable!()
                 };
                 let fut = App::new(event_loop, crate::Platform::new(SendEvent(proxy.clone())));
-                run_future(async move {
+                Platform::run_future(async move {
                     proxy
                         .send_event(ProxyEvent::Init(fut.await))
                         .map_err(|_| "event loop closed")

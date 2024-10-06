@@ -362,29 +362,8 @@ async fn run() {
     event_loop.run_app(&mut WinitProxy::Uninit(proxy)).unwrap();
 }
 
-/// May or may not block
-fn run_future<F: 'static + Future<Output = ()>>(f: F) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        pollster::block_on(f);
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        wasm_bindgen_futures::spawn_local(f);
-    }
-}
-
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn start() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-        console_log::init().expect("could not initialize logger");
-    }
-
-    run_future(run());
+    Platform::init();
+    Platform::run_future(run());
 }
