@@ -8,15 +8,26 @@
   <style>
     canvas {
       background-color: black;
-      margin: 0;
-      flex: 1;
-      contain: size;
+      width: 100%!important;
+      height: 98vh!important;
+      max-width: 64vw;
+      display: block;
+    }
+    body {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-flow: row wrap;
+    }
+    .cm-editor {
+      min-width: 30vw;
+      max-height: 98vh;
     }
   </style>
 </head>
 
 <body>
-  <canvas id="canvas" height="480" width="640"></canvas>
+  <canvas id="canvas"></canvas>
   <script src="./main.js"></script>
 </body>
 
