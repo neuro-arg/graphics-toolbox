@@ -67,7 +67,10 @@ impl App {
                     compilation_options: Default::default(),
                     targets: &[Some(swapchain_format.into())],
                 }),
-                primitive: wgpu::PrimitiveState::default(),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
                 multiview: None,
@@ -300,7 +303,7 @@ impl ApplicationHandler<Event> for App {
                     });
                     rpass.set_pipeline(pipeline);
                     rpass.set_bind_group(0, group, &[]);
-                    rpass.draw(0..6, 0..1);
+                    rpass.draw(0..4, 0..1);
                     drop(rpass);
                     drop(view);
                     self.queue.submit(Some(encoder.finish()));

@@ -32,12 +32,11 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    let w = in_vertex_index - (in_vertex_index / 3) * 2;
-    let x = f32(f32(w & 2u) - 1);
-    let y = f32(f32(w & 1u) * 2.0 - 1);
+    let x = (in_vertex_index & 2u) >> 1;
+    let y = in_vertex_index & 1u;
     var out: VertexOutput;
-    out.tex_coords = vec2<f32>(x / 2 + 0.5, 0.5 - y / 2);
-    out.pos = vec4<f32>(x, y, 0.0, 1.0);
+    out.tex_coords = vec2<f32>(f32(x), 1 - f32(y));
+    out.pos = vec4<f32>(f32(x << 1) - 1, f32(y << 1) - 1, 0.0, 1.0);
     return out;
 }
 
@@ -65,5 +64,6 @@ fn fs_main(inp: VertexOutput) -> @location(0) vec4<f32> {
         // sampleClamp2(texture, sampler1, transform_coords(inp.tex_coords)).xyz / 2
         // +
         sampleClamp2(texture, sampler1, transform_coords2(inp.tex_coords)).xyz / 2
+        // sampleClamp2(texture, sampler1, inp.tex_coords).xyz / 2
         , 1.0);
 }
