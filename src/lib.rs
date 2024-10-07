@@ -1,8 +1,9 @@
+#![allow(clippy::single_match)]
 use core::str;
 use image::GenericImageView;
 use std::{borrow::Cow, future::Future};
 use wgpu::{
-    Adapter, BindGroup, BindGroupLayout, Device, Queue, RenderPipeline, Surface,
+    Adapter, BindGroup, BindGroupLayout, BufferUsages, Device, Queue, RenderPipeline, Surface,
     SurfaceConfiguration,
 };
 use winit::{
@@ -29,9 +30,23 @@ struct App {
     _platform: Platform,
     // stuff to load/reload later
     bind_group: Option<BindGroup>,
+    data_buffer: wgpu::Buffer,
+    dim: (f32, f32),
+    pos: (f32, f32),
+    scale: f32,
 }
 
 impl App {
+    fn buf_contents(&self) -> [u8; 24] {
+        let mut ret = [0u8; 24];
+        for (dst, src) in ret
+            .chunks_exact_mut(4)
+            .zip([self.dim.0, self.dim.1, self.pos.0, self.pos.1, self.scale])
+        {
+            dst.copy_from_slice(&src.to_le_bytes());
+        }
+        ret
+    }
     fn load_shader(&mut self, shader: &str) {
         let shader = self
             .device
@@ -81,6 +96,7 @@ impl App {
     fn load_image(&mut self, img: image::DynamicImage) {
         let dimensions = img.dimensions();
         let rgba = img.into_rgba8();
+        self.dim = (dimensions.0 as f32, dimensions.1 as f32);
 
         let size = wgpu::Extent3d {
             width: dimensions.0,
@@ -134,6 +150,7 @@ impl App {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
+        let buffer_binding = self.data_buffer.as_entire_buffer_binding();
 
         self.bind_group = Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &self.layout,
@@ -149,6 +166,10 @@ impl App {
                 wgpu::BindGroupEntry {
                     binding: 2,
                     resource: wgpu::BindingResource::Sampler(&sampler2),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Buffer(buffer_binding),
                 },
             ],
             label: None,
@@ -224,8 +245,24 @@ impl App {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
                 ],
                 label: None,
+            });
+            let data_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                mapped_at_creation: false,
+                size: 24,
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             });
             let reporter = platform.error_reporter();
             device.on_uncaptured_error(Box::new(move |error: wgpu::Error| {
@@ -247,6 +284,10 @@ impl App {
                 _platform: platform,
                 bind_group: None,
                 layout,
+                data_buffer,
+                dim: (0., 0.),
+                pos: (0.0, 0.0),
+                scale: 1.0,
             }
         }
     }
@@ -267,6 +308,56 @@ impl ApplicationHandler<Event> for App {
         event: WindowEvent,
     ) {
         match event {
+            WindowEvent::MouseWheel { delta, .. } => {
+                match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => {
+                        self.scale *= 1.1f32.powf(y);
+                        // println!("scale1 {:?}", self.scale);
+                    }
+                    winit::event::MouseScrollDelta::PixelDelta(delta) => {
+                        self.scale *= 1.1f32.powf(delta.y as f32 * 0.1);
+                        // println!("scale2 {:?}", self.scale);
+                    }
+                }
+                self.window.request_redraw();
+            }
+            WindowEvent::PinchGesture { delta, .. } => {
+                self.scale *= 1.1f32.powf(delta as f32);
+                // println!("scale2 {:?}", self.scale);
+                self.window.request_redraw();
+            }
+            WindowEvent::PanGesture { delta, .. } => {
+                self.pos.0 += delta.x / 500. / self.scale;
+                self.pos.1 += delta.y / 500. / self.scale;
+                println!("pos {:?}", self.pos);
+                self.window.request_redraw();
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state != winit::event::ElementState::Released {
+                    match event.physical_key {
+                        winit::keyboard::PhysicalKey::Code(c) => match c {
+                            winit::keyboard::KeyCode::ArrowLeft => {
+                                self.pos.0 += 0.1 / self.scale;
+                                self.window.request_redraw();
+                            }
+                            winit::keyboard::KeyCode::ArrowRight => {
+                                self.pos.0 -= 0.1 / self.scale;
+                                self.window.request_redraw();
+                            }
+                            winit::keyboard::KeyCode::ArrowUp => {
+                                self.pos.1 -= 0.1 / self.scale;
+                                self.window.request_redraw();
+                            }
+                            winit::keyboard::KeyCode::ArrowDown => {
+                                self.pos.1 += 0.1 / self.scale;
+                                self.window.request_redraw();
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            }
             WindowEvent::Resized(new_size) => {
                 // Reconfigure the surface with the new size
                 self.config.width = new_size.width.max(1);
@@ -281,6 +372,8 @@ impl ApplicationHandler<Event> for App {
                         .surface
                         .get_current_texture()
                         .expect("Failed to acquire next swap chain texture");
+                    self.queue
+                        .write_buffer(&self.data_buffer, 0, &self.buf_contents());
                     let view = frame
                         .texture
                         .create_view(&wgpu::TextureViewDescriptor::default());

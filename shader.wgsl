@@ -25,6 +25,12 @@ fn transform_coords2(coords: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(coords.x, abs((coords.y * 100) / (0.5 - coords.x)));
 }
 
+struct Data {
+    @location(0) image_dim: vec2<f32>,
+    @location(0) pos: vec2<f32>,
+    @location(0) scale: f32,
+}
+
 struct VertexOutput {
     @builtin(position) pos: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
@@ -32,11 +38,13 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
-    let x = (in_vertex_index & 2u) >> 1;
-    let y = in_vertex_index & 1u;
+    let pos = vec2<f32>(f32((in_vertex_index & 2u) >> 1), f32(in_vertex_index & 1u));
     var out: VertexOutput;
-    out.tex_coords = vec2<f32>(f32(x), 1 - f32(y));
-    out.pos = vec4<f32>(f32(x << 1) - 1, f32(y << 1) - 1, 0.0, 1.0);
+    out.tex_coords = vec2<f32>(pos.x, 1 - pos.y);
+    out.pos = vec4<f32>(
+        ((pos.xy + data.pos) * data.scale + 0.5 * (2.0 - data.scale) - 1.0) * 2.0,
+        0.0, 1.0
+    );
     return out;
 }
 
@@ -46,6 +54,8 @@ var texture: texture_2d<f32>;
 var sampler1: sampler;
 @group(0) @binding(2)
 var sampler2: sampler;
+@group(0) @binding(3)
+var<uniform> data: Data;
 
 fn sampleClamp(texture: texture_2d<f32>, sampler1: sampler, v: vec2<f32>) -> vec4<f32> {
     if (v.x < 0.0 || v.x > 1.0 || v.y < 0.0 || v.y > 1.0) {
