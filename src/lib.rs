@@ -37,8 +37,9 @@ struct App {
 }
 
 impl App {
-    fn buf_contents(&self) -> [u8; 24] {
-        let mut ret = [0u8; 24];
+    // must be a multiple of 16 bytes
+    fn buf_contents(&self) -> [u8; 32] {
+        let mut ret = [0u8; 32];
         for (dst, src) in ret
             .chunks_exact_mut(4)
             .zip([self.dim.0, self.dim.1, self.pos.0, self.pos.1, self.scale])
@@ -261,7 +262,7 @@ impl App {
             let data_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
                 mapped_at_creation: false,
-                size: 24,
+                size: 32,
                 usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             });
             let reporter = platform.error_reporter();

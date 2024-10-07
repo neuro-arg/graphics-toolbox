@@ -27,8 +27,9 @@ fn transform_coords2(coords: vec2<f32>) -> vec2<f32> {
 
 struct Data {
     @location(0) image_dim: vec2<f32>,
-    @location(0) pos: vec2<f32>,
-    @location(0) scale: f32,
+    @location(1) pos: vec2<f32>,
+    @location(2) scale: f32,
+    @location(3) padding: vec2<f32>,
 }
 
 struct VertexOutput {

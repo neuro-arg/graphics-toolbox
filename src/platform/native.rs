@@ -1,10 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    error::Error,
-    future::Future,
-    path::Path,
-    sync::{mpsc, Arc, Mutex},
-};
+use std::{collections::HashSet, error::Error, future::Future, path::Path, sync::mpsc};
 
 use notify::{RecursiveMode, Watcher};
 use winit::window::WindowAttributes;
