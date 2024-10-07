@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     error::Error,
     future::Future,
     path::Path,
@@ -11,10 +11,7 @@ use winit::window::WindowAttributes;
 
 // very bad impl for testing and stuff
 #[derive(Debug)]
-pub struct Platform(
-    Arc<Mutex<HashSet<String>>>,
-    mpsc::SyncSender<(String, bool)>,
-);
+pub struct Platform(mpsc::SyncSender<(String, bool)>);
 
 impl super::PlatformTrait for Platform {
     fn init() {
@@ -37,64 +34,74 @@ impl super::PlatformTrait for Platform {
             .collect()
     }
     fn watch_file(&mut self, name: &str) {
-        self.1.send((name.to_owned(), true)).unwrap()
+        self.0.send((name.to_owned(), true)).unwrap()
     }
     fn unwatch_file(&mut self, name: &str) {
-        self.1.send((name.to_owned(), false)).unwrap()
+        self.0.send((name.to_owned(), false)).unwrap()
     }
     fn new(send_event: crate::winit_proxy::SendEvent) -> Self {
         let (watch_tx, watch_rx) = mpsc::sync_channel(16);
-        let mut ret = Self(Arc::default(), watch_tx);
-        let files = ret.list_files();
-        ret.0.lock().unwrap().extend(files);
-        let arc = Arc::downgrade(&ret.0);
+        let (watch_tx2, watch_rx2) = mpsc::sync_channel(16);
+        let (done_tx, done_rx) = std::sync::mpsc::sync_channel::<()>(1);
+        let ret = Self(watch_tx2);
+        let send_event1 = send_event.clone();
         std::thread::spawn(move || {
-            let (done_tx, done_rx) = std::sync::mpsc::sync_channel(1);
+            while let Ok((a, b)) = watch_rx2.recv() {
+                if b {
+                    if let Ok(contents) = std::fs::read(&a) {
+                        send_event1.send_event(crate::Event::FileContents(a.clone(), contents));
+                    }
+                }
+                if watch_tx.send((a, b)).is_err() {
+                    break;
+                }
+            }
+            drop(done_tx);
+        });
+        std::thread::spawn(move || {
             let send_event1 = send_event.clone();
+            let mut watchers = HashSet::new();
             let mut watcher = notify::recommended_watcher(move |res: Result<_, _>| {
                 let event: notify::Event = res.unwrap();
+                while let Ok(x) = watch_rx.try_recv() {
+                    match x {
+                        (x, true) => {
+                            watchers.insert(x);
+                        }
+                        (x, false) => {
+                            watchers.remove(&x);
+                        }
+                    }
+                }
+                #[allow(clippy::single_match)]
                 match event.kind {
                     notify::EventKind::Access(notify::event::AccessKind::Close(
                         notify::event::AccessMode::Write,
-                    )) => {}
-                    _ => return,
-                }
-                let Some(arc) = arc.upgrade() else {
-                    let _ = done_tx.send(());
-                    return;
-                };
-                let mut arc = arc.lock().unwrap();
-                for path in &event.paths {
-                    if let Some(path) = path.file_name().and_then(|name| name.to_str()) {
-                        arc.insert(path.to_owned());
-                    }
-                }
-                drop(arc);
-                for path in &event.paths {
-                    if let Some(path) = path.file_name().and_then(|name| name.to_str()) {
-                        if let Ok(contents) = std::fs::read(path) {
-                            send_event1
-                                .send_event(crate::Event::FileContents(path.to_owned(), contents));
+                    )) => {
+                        for path in &event.paths {
+                            if let Some(path) = path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .filter(|s| watchers.contains(*s))
+                            {
+                                if let Ok(contents) = std::fs::read(path) {
+                                    println!("sending {path:?}");
+                                    send_event1.send_event(crate::Event::FileContents(
+                                        path.to_owned(),
+                                        contents,
+                                    ));
+                                }
+                            }
                         }
                     }
+                    _ => {}
                 }
             })
             .unwrap();
 
-            // Add a path to be watched. All files and directories at that path and
-            // below will be monitored for changes.
-            while let Ok(x) = watch_rx.recv() {
-                match x {
-                    (x, true) => {
-                        if let Ok(contents) = std::fs::read(&x) {
-                            send_event.send_event(crate::Event::FileContents(x.clone(), contents));
-                        }
-                        watcher.watch(Path::new(&x), RecursiveMode::NonRecursive)
-                    }
-                    (x, false) => watcher.unwatch(Path::new(&x)),
-                }
-                .unwrap()
-            }
+            watcher
+                .watch(Path::new("."), RecursiveMode::NonRecursive)
+                .unwrap();
             let _ = done_rx.recv();
         });
         ret
