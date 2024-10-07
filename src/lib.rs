@@ -1,17 +1,12 @@
 use core::str;
 use image::GenericImageView;
 use std::{borrow::Cow, future::Future};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 use wgpu::{
     Adapter, BindGroup, BindGroupLayout, Device, Queue, RenderPipeline, Surface,
     SurfaceConfiguration,
 };
 use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::EventLoop,
-    window::{Window, WindowAttributes},
+    application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop, window::Window,
 };
 use winit_proxy::WinitProxy;
 
@@ -37,28 +32,6 @@ struct App {
 }
 
 impl App {
-    #[cfg(target_arch = "wasm32")]
-    fn window_attrs() -> WindowAttributes {
-        use winit::platform::web::WindowAttributesExtWebSys;
-        let canvas = web_sys::window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .get_element_by_id("canvas")
-            .unwrap()
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .unwrap();
-        Self::base_window_attrs()
-            .with_canvas(Some(canvas))
-            .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    fn window_attrs() -> WindowAttributes {
-        Self::base_window_attrs()
-    }
-    fn base_window_attrs() -> WindowAttributes {
-        winit::window::WindowAttributes::default()
-    }
     fn load_shader(&mut self, shader: &str) {
         let shader = self
             .device
@@ -182,7 +155,11 @@ impl App {
         event_loop: &winit::event_loop::ActiveEventLoop,
         mut platform: Platform,
     ) -> impl 'static + Future<Output = Self> {
-        let window = event_loop.create_window(Self::window_attrs()).unwrap();
+        let window = event_loop
+            .create_window(Platform::set_window_attrs(
+                winit::window::WindowAttributes::default(),
+            ))
+            .unwrap();
         let mut size = window.inner_size();
         size.width = size.width.max(640);
         size.height = size.height.max(480);
@@ -362,7 +339,6 @@ async fn run() {
     event_loop.run_app(&mut WinitProxy::Uninit(proxy)).unwrap();
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn start() {
     Platform::init();
     Platform::run_future(run());

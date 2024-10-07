@@ -2,6 +2,7 @@ use std::{error::Error, future::Future, str::FromStr};
 
 use js_sys::{wasm_bindgen::JsCast, JsString};
 use wasm_bindgen::prelude::*;
+use winit::{platform::web::WindowAttributesExtWebSys, window::WindowAttributes};
 
 #[wasm_bindgen]
 extern "C" {
@@ -22,6 +23,11 @@ extern "C" {
     pub fn report_error(this: &JsPlatform, error: &str);
 }
 
+#[wasm_bindgen(start)]
+fn start() {
+    crate::start();
+}
+
 #[derive(Debug)]
 pub struct Platform(crate::winit_proxy::SendEvent, JsPlatform);
 
@@ -32,6 +38,19 @@ impl super::PlatformTrait for Platform {
     }
     fn run_future<F: 'static + Future<Output = ()>>(f: F) {
         wasm_bindgen_futures::spawn_local(f);
+    }
+    fn set_window_attrs(attrs: WindowAttributes) -> WindowAttributes {
+        let canvas = web_sys::window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .get_element_by_id("canvas")
+            .unwrap()
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .unwrap();
+        attrs
+            .with_canvas(Some(canvas))
+            .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
     }
     fn list_files(&mut self) -> Vec<String> {
         self.1.list_files()

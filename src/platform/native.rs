@@ -1,8 +1,13 @@
 use std::{
-    collections::HashSet, error::Error, future::Future, path::Path, sync::{mpsc, Arc, Mutex}
+    collections::HashSet,
+    error::Error,
+    future::Future,
+    path::Path,
+    sync::{mpsc, Arc, Mutex},
 };
 
 use notify::{RecursiveMode, Watcher};
+use winit::window::WindowAttributes;
 
 // very bad impl for testing and stuff
 #[derive(Debug)]
@@ -17,6 +22,9 @@ impl super::PlatformTrait for Platform {
     }
     fn run_future<F: 'static + Future<Output = ()>>(f: F) {
         pollster::block_on(f);
+    }
+    fn set_window_attrs(attrs: WindowAttributes) -> WindowAttributes {
+        attrs
     }
     fn list_files(&mut self) -> Vec<String> {
         std::fs::read_dir(".")
