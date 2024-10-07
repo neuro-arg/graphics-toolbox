@@ -26,10 +26,10 @@ fn transform_coords2(coords: vec2<f32>) -> vec2<f32> {
 }
 
 struct Data {
-    @location(0) image_dim: vec2<f32>,
-    @location(1) pos: vec2<f32>,
-    @location(2) scale: f32,
-    @location(3) padding: vec2<f32>,
+    @location(0) img_dim: vec2<f32>,
+    @location(1) win_dim: vec2<f32>,
+    @location(2) pos: vec2<f32>,
+    @location(3) scale: f32,
 }
 
 struct VertexOutput {
@@ -42,8 +42,14 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
     let pos = vec2<f32>(f32((in_vertex_index & 2u) >> 1), f32(in_vertex_index & 1u));
     var out: VertexOutput;
     out.tex_coords = vec2<f32>(pos.x, 1 - pos.y);
+    var scale: vec2<f32>;
+    if (data.win_dim.y > data.win_dim.x) {
+        scale = vec2<f32>(data.scale, data.scale * data.win_dim.x / data.win_dim.y * data.img_dim.y / data.img_dim.x);
+    } else {
+        scale = vec2<f32>(data.scale * data.win_dim.y / data.win_dim.x * data.img_dim.x / data.img_dim.y, data.scale);
+    }
     out.pos = vec4<f32>(
-        ((pos + data.pos) * 2.0 - 1) * data.scale,
+        ((pos + data.pos) * 2.0 - 1) * scale,
         0.0, 1.0
     );
     return out;

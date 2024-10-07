@@ -31,7 +31,7 @@ struct App {
     // stuff to load/reload later
     bind_group: Option<BindGroup>,
     data_buffer: wgpu::Buffer,
-    dim: (f32, f32),
+    img_dim: (f32, f32),
     pos: (f32, f32),
     scale: f32,
 }
@@ -40,10 +40,16 @@ impl App {
     // must be a multiple of 16 bytes
     fn buf_contents(&self) -> [u8; 32] {
         let mut ret = [0u8; 32];
-        for (dst, src) in ret
-            .chunks_exact_mut(4)
-            .zip([self.dim.0, self.dim.1, self.pos.0, self.pos.1, self.scale])
-        {
+        let win_dim = self.window.inner_size();
+        for (dst, src) in ret.chunks_exact_mut(4).zip([
+            self.img_dim.0,
+            self.img_dim.1,
+            win_dim.width as f32,
+            win_dim.height as f32,
+            self.pos.0,
+            self.pos.1,
+            self.scale,
+        ]) {
             dst.copy_from_slice(&src.to_le_bytes());
         }
         ret
@@ -97,7 +103,7 @@ impl App {
     fn load_image(&mut self, img: image::DynamicImage) {
         let dimensions = img.dimensions();
         let rgba = img.into_rgba8();
-        self.dim = (dimensions.0 as f32, dimensions.1 as f32);
+        self.img_dim = (dimensions.0 as f32, dimensions.1 as f32);
 
         let size = wgpu::Extent3d {
             width: dimensions.0,
@@ -286,7 +292,7 @@ impl App {
                 bind_group: None,
                 layout,
                 data_buffer,
-                dim: (0., 0.),
+                img_dim: (0., 0.),
                 pos: (0.0, 0.0),
                 scale: 1.0,
             }
