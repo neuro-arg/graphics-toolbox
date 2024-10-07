@@ -50,7 +50,7 @@ impl super::PlatformTrait for Platform {
             .unwrap();
         attrs
             .with_canvas(Some(canvas))
-            .with_inner_size(winit::dpi::LogicalSize::new(128.0, 128.0))
+            .with_inner_size(winit::dpi::LogicalSize::new(640.0, 480.0))
     }
     fn list_files(&mut self) -> Vec<String> {
         self.1.list_files()
