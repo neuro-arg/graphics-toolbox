@@ -30,7 +30,8 @@ jobs:
         npm install -g wasm-pack
         npm install
         npm run build
-        mv dist _site
+        mv dist ../_site
+        cd ..
 
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
